@@ -1,0 +1,3 @@
+﻿  3DTP.cpp
+c:\users\benjamin\documents\mydirectx\tp1\3dtp\3dtp.cpp(123): warning C4305: 'argument' : troncation de 'double' à 'float'
+  3DTP.vcxproj -> C:\Users\Benjamin\Documents\MyDirectX\TP1\Debug\3DTP.exe
