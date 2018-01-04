@@ -8,6 +8,8 @@
 #include "ImGui/imgui_impl_dx11.h"
 #include "DirectXTK\DDSTextureLoader.h"
 
+#include <vector>
+
 // Global Variables:
 HINSTANCE					hInst;	// current instance
 HWND						hWnd;	// windows handle used in DirectX initialization
@@ -26,6 +28,26 @@ ID3D11Buffer*				g_pConstantBuffer = NULL; // CB (added after given code)
 
 ID3D11Texture2D*			g_pRender = NULL;
 
+ID3D11Buffer*				sphereIndexBuffer;
+ID3D11Buffer*				sphereVertBuffer;
+
+ID3D11VertexShader*			SKYMAP_VS;
+ID3D11PixelShader*			SKYMAP_PS;
+ID3D10Blob*					SKYMAP_VS_Buffer;
+ID3D10Blob*					SKYMAP_PS_Buffer;
+
+ID3D11ShaderResourceView*	smrv;
+
+ID3D11DepthStencilState*	DSLessEqual;
+ID3D11RasterizerState*		RSCullNone;
+
+int NumSphereVertices;
+int NumSphereFaces;
+
+//XMMATRIX sphereWorld;
+
+HRESULT hr;
+
 unsigned short m_sizeX;
 unsigned short m_sizeY;
 float *m_height;
@@ -36,15 +58,10 @@ bool	CreateWindows(HINSTANCE, int, HWND& hWnd);
 bool	CreateDevice();
 bool	CreateDefaultRT();
 bool	CreateCopyRT();
-bool	CompileShader(LPCWSTR pFileName, bool bPixel, LPCSTR pEntrypoint, ID3DBlob** ppCompiledShader);//utiliser un L devant une chaine de caractère pour avoir un wchar* comme L"MonEffet.fx"
-bool LoadRAW(const std::string& map);
+bool	CompileShader(LPCWSTR pFileName, bool bPixel, LPCSTR pEntrypoint, ID3DBlob** ppCompiledShader);
+bool	LoadRAW(const std::string& map);
+void	CreateSphere(int LatLines, int LongLines);
 
-/*
-Exemple of possible triangle coodinates in 3D
-P0 0.0f, 1.0f, 0.0f,
-P1 5.0f, 1.0f, 0.0f,
-P2 5.0f, 1.0f, 5.0f,
-*/
 using namespace DirectX::SimpleMath;
 using namespace DirectX;
 
@@ -93,6 +110,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		MessageBox(NULL, L"Erreur lors de la création des render targets de copy", L"Error", 0);
 		return false;
 	}
+	CreateSphere(10, 10);
 
 	ID3D11RasterizerState* pRasterizerState;
 	D3D11_RASTERIZER_DESC oDesc;
@@ -228,8 +246,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	ID3D11Buffer *pIndexBuffer = NULL;
 
 	unsigned int *indices = new unsigned int[6 * (TailleX - 1) * (TailleY - 1)];
-	// de la forme i, i + a, i + b, i + c, i + a, i + b. A vous de déterminez les valeur de a (le
-	// point d’après), b(le point une ligne après et c(le point après celui une ligne après).
 	int index = 0;
 	for (int i = 0; i < (TailleX - 1); i++)
 	{
@@ -328,7 +344,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 			//g_pImmediateContext->Draw(3, 0);
 			g_pImmediateContext->DrawIndexed((6 * (TailleX - 1) * (TailleY - 1)), 0, 0);
-			//
 
 			ImGui::Render();
 			g_pSwapChain->Present(0, 0);
@@ -353,6 +368,17 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	pVertexLayout->Release();
 	delete[] indices;
 	delete[] vertexs;
+
+	//Skybox
+	sphereIndexBuffer->Release();
+	sphereVertBuffer->Release();
+	SKYMAP_VS->Release();
+	SKYMAP_PS->Release();
+	SKYMAP_VS_Buffer->Release();
+	SKYMAP_PS_Buffer->Release();
+	smrv->Release();
+	DSLessEqual->Release();
+	RSCullNone->Release();
 
 	delete g_pInputManager;
 	return (int) oMsg.wParam;
@@ -476,7 +502,6 @@ bool LoadRAW(const std::string& map)
 	fopen_s(&file, map.c_str(), "rb");
 	if (!file)
 		return false;
-	//lit la taille en X et en Y depuis le fichier
 	fread(&m_sizeX, sizeof(unsigned short), 1, file);
 	fread(&m_sizeY, sizeof(unsigned short), 1, file);
 	unsigned int size = m_sizeX * m_sizeY;
@@ -491,4 +516,125 @@ bool LoadRAW(const std::string& map)
 
 	delete[] tmp;
 	return true;
+}
+
+void CreateSphere(int LatLines, int LongLines)
+{
+	NumSphereVertices = ((LatLines - 2) * LongLines) + 2;
+	NumSphereFaces = ((LatLines - 3) * (LongLines) * 2) + (LongLines * 2);
+
+	float sphereYaw = 0.0f;
+	float spherePitch = 0.0f;
+
+	std::vector<VertexInput> vertices(NumSphereVertices);
+
+	XMVECTOR currVertPos = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+
+	vertices[0].x = 0.0f;
+	vertices[0].y = 0.0f;
+	vertices[0].z = 1.0f;
+
+	for (DWORD i = 0; i < LatLines - 2; ++i)
+	{
+		spherePitch = (i + 1) * (3.14 / (LatLines - 1));
+		Rotationx = XMMatrixRotationX(spherePitch);
+		for (DWORD j = 0; j < LongLines; ++j)
+		{
+			sphereYaw = j * (6.28 / (LongLines));
+			Rotationy = XMMatrixRotationZ(sphereYaw);
+			currVertPos = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), (Rotationx * Rotationy));
+			currVertPos = XMVector3Normalize(currVertPos);
+			vertices[i*LongLines + j + 1].x = XMVectorGetX(currVertPos);
+			vertices[i*LongLines + j + 1].y = XMVectorGetY(currVertPos);
+			vertices[i*LongLines + j + 1].z = XMVectorGetZ(currVertPos);
+		}
+	}
+
+	vertices[NumSphereVertices - 1].x = 0.0f;
+	vertices[NumSphereVertices - 1].y = 0.0f;
+	vertices[NumSphereVertices - 1].z = -1.0f;
+
+
+	D3D11_BUFFER_DESC vertexBufferDesc;
+	ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
+
+	vertexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+	vertexBufferDesc.ByteWidth = sizeof(VertexInput) * NumSphereVertices;
+	vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	vertexBufferDesc.CPUAccessFlags = 0;
+	vertexBufferDesc.MiscFlags = 0;
+
+	D3D11_SUBRESOURCE_DATA vertexBufferData;
+
+	ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
+	vertexBufferData.pSysMem = &vertices[0];
+	hr = g_pDevice->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &sphereVertBuffer);
+
+	std::vector<DWORD> indices(NumSphereFaces * 3);
+
+	int k = 0;
+	for (DWORD l = 0; l < LongLines - 1; ++l)
+	{
+		indices[k] = 0;
+		indices[k + 1] = l + 1;
+		indices[k + 2] = l + 2;
+		k += 3;
+	}
+
+	indices[k] = 0;
+	indices[k + 1] = LongLines;
+	indices[k + 2] = 1;
+	k += 3;
+
+	for (DWORD i = 0; i < LatLines - 3; ++i)
+	{
+		for (DWORD j = 0; j < LongLines - 1; ++j)
+		{
+			indices[k] = i * LongLines + j + 1;
+			indices[k + 1] = i * LongLines + j + 2;
+			indices[k + 2] = (i + 1)*LongLines + j + 1;
+
+			indices[k + 3] = (i + 1)*LongLines + j + 1;
+			indices[k + 4] = i * LongLines + j + 2;
+			indices[k + 5] = (i + 1)*LongLines + j + 2;
+
+			k += 6; // next quad
+		}
+
+		indices[k] = (i*LongLines) + LongLines;
+		indices[k + 1] = (i*LongLines) + 1;
+		indices[k + 2] = ((i + 1)*LongLines) + LongLines;
+
+		indices[k + 3] = ((i + 1)*LongLines) + LongLines;
+		indices[k + 4] = (i*LongLines) + 1;
+		indices[k + 5] = ((i + 1)*LongLines) + 1;
+
+		k += 6;
+	}
+
+	for (DWORD l = 0; l < LongLines - 1; ++l)
+	{
+		indices[k] = NumSphereVertices - 1;
+		indices[k + 1] = (NumSphereVertices - 1) - (l + 1);
+		indices[k + 2] = (NumSphereVertices - 1) - (l + 2);
+		k += 3;
+	}
+
+	indices[k] = NumSphereVertices - 1;
+	indices[k + 1] = (NumSphereVertices - 1) - LongLines;
+	indices[k + 2] = NumSphereVertices - 2;
+
+	D3D11_BUFFER_DESC indexBufferDesc;
+	ZeroMemory(&indexBufferDesc, sizeof(indexBufferDesc));
+
+	indexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+	indexBufferDesc.ByteWidth = sizeof(DWORD) * NumSphereFaces * 3;
+	indexBufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	indexBufferDesc.CPUAccessFlags = 0;
+	indexBufferDesc.MiscFlags = 0;
+
+	D3D11_SUBRESOURCE_DATA iinitData;
+
+	iinitData.pSysMem = &indices[0];
+	g_pDevice->CreateBuffer(&indexBufferDesc, &iinitData, &sphereIndexBuffer);
 }
