@@ -34,3 +34,4 @@
 .vs/
 Debug/
 3DTP/Debug/
+*.log

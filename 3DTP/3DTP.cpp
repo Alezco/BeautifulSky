@@ -44,8 +44,6 @@ ID3D11RasterizerState*		RSCullNone;
 int NumSphereVertices;
 int NumSphereFaces;
 
-//XMMATRIX sphereWorld;
-
 HRESULT hr;
 
 unsigned short m_sizeX;
@@ -64,6 +62,10 @@ void	CreateSphere(int LatLines, int LongLines);
 
 using namespace DirectX::SimpleMath;
 using namespace DirectX;
+
+Matrix sphereWorld;
+Matrix Rotationx;
+Matrix Rotationy;
 
 struct VertexInput {
 	float x, y, z;
@@ -537,11 +539,11 @@ void CreateSphere(int LatLines, int LongLines)
 	for (DWORD i = 0; i < LatLines - 2; ++i)
 	{
 		spherePitch = (i + 1) * (3.14 / (LatLines - 1));
-		Rotationx = XMMatrixRotationX(spherePitch);
+		Rotationx = Matrix::CreateRotationX(spherePitch);
 		for (DWORD j = 0; j < LongLines; ++j)
 		{
 			sphereYaw = j * (6.28 / (LongLines));
-			Rotationy = XMMatrixRotationZ(sphereYaw);
+			Rotationy = Matrix::CreateRotationY(sphereYaw);
 			currVertPos = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), (Rotationx * Rotationy));
 			currVertPos = XMVector3Normalize(currVertPos);
 			vertices[i*LongLines + j + 1].x = XMVectorGetX(currVertPos);
@@ -553,7 +555,6 @@ void CreateSphere(int LatLines, int LongLines)
 	vertices[NumSphereVertices - 1].x = 0.0f;
 	vertices[NumSphereVertices - 1].y = 0.0f;
 	vertices[NumSphereVertices - 1].z = -1.0f;
-
 
 	D3D11_BUFFER_DESC vertexBufferDesc;
 	ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
