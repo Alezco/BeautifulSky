@@ -1,12 +1,12 @@
 ﻿  3DTP.cpp
-c:\users\benjamin\documents\beautifulsky\3dtp\3dtp.cpp(328): warning C4305: 'argument' : troncation de 'double' à 'float'
-c:\users\benjamin\documents\beautifulsky\3dtp\3dtp.cpp(539): warning C4018: '<' : incompatibilité signed/unsigned
-c:\users\benjamin\documents\beautifulsky\3dtp\3dtp.cpp(541): warning C4244: '=' : conversion de 'double' en 'float', perte possible de données
-c:\users\benjamin\documents\beautifulsky\3dtp\3dtp.cpp(543): warning C4018: '<' : incompatibilité signed/unsigned
-c:\users\benjamin\documents\beautifulsky\3dtp\3dtp.cpp(545): warning C4244: '=' : conversion de 'double' en 'float', perte possible de données
-c:\users\benjamin\documents\beautifulsky\3dtp\3dtp.cpp(577): warning C4018: '<' : incompatibilité signed/unsigned
-c:\users\benjamin\documents\beautifulsky\3dtp\3dtp.cpp(590): warning C4018: '<' : incompatibilité signed/unsigned
-c:\users\benjamin\documents\beautifulsky\3dtp\3dtp.cpp(592): warning C4018: '<' : incompatibilité signed/unsigned
-c:\users\benjamin\documents\beautifulsky\3dtp\3dtp.cpp(616): warning C4018: '<' : incompatibilité signed/unsigned
-3DTP.obj : warning LNK4075: ' /EDITANDCONTINUE' ignorÚ Ó cause de la spÚcification '/SAFESEH'
-  3DTP.vcxproj -> C:\Users\Benjamin\Documents\BeautifulSky\Debug\3DTP.exe
+c:\users\moussanji\documents\mti\directx\beautifulsky\3dtp\3dtp.cpp(379): warning C4305: 'argument' : troncation de 'double' à 'float'
+c:\users\moussanji\documents\mti\directx\beautifulsky\3dtp\3dtp.cpp(625): warning C4018: '<' : incompatibilité signed/unsigned
+c:\users\moussanji\documents\mti\directx\beautifulsky\3dtp\3dtp.cpp(627): warning C4244: '=' : conversion de 'double' en 'float', perte possible de données
+c:\users\moussanji\documents\mti\directx\beautifulsky\3dtp\3dtp.cpp(629): warning C4018: '<' : incompatibilité signed/unsigned
+c:\users\moussanji\documents\mti\directx\beautifulsky\3dtp\3dtp.cpp(631): warning C4244: '=' : conversion de 'double' en 'float', perte possible de données
+c:\users\moussanji\documents\mti\directx\beautifulsky\3dtp\3dtp.cpp(663): warning C4018: '<' : incompatibilité signed/unsigned
+c:\users\moussanji\documents\mti\directx\beautifulsky\3dtp\3dtp.cpp(676): warning C4018: '<' : incompatibilité signed/unsigned
+c:\users\moussanji\documents\mti\directx\beautifulsky\3dtp\3dtp.cpp(678): warning C4018: '<' : incompatibilité signed/unsigned
+c:\users\moussanji\documents\mti\directx\beautifulsky\3dtp\3dtp.cpp(702): warning C4018: '<' : incompatibilité signed/unsigned
+  3DTP.vcxproj -> C:\Users\moussanji\Documents\MTI\DirectX\BeautifulSky\Debug\3DTP.exe
+  3DTP.vcxproj -> C:\Users\moussanji\Documents\MTI\DirectX\BeautifulSky\Debug\3DTP.pdb (Full PDB)

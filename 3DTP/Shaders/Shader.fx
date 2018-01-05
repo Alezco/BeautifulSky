@@ -50,17 +50,17 @@ TextureCube SkyMap;
 struct SKYMAP_VS_OUTPUT    //output structure for skymap vertex shader
 {
     float4 Pos : SV_POSITION;
-    float3 texCoord : TEXCOORD;
+    float3 texCoord : TEXCOORD0;
 };
 
-SKYMAP_VS_OUTPUT SKYMAP_VS(float3 inPos : POSITION, float2 inTexCoord : TEXCOORD, float3 normal : NORMAL)
+SKYMAP_VS_OUTPUT SKYMAP_VS(VertexInput input)
 {
     SKYMAP_VS_OUTPUT output = (SKYMAP_VS_OUTPUT)0;
 
     //Set Pos to xyww instead of xyzw, so that z will always be 1 (furthest from camera)
-    output.Pos = mul(float4(inPos, 1.0f), WorldViewProj).xyww;
+    output.Pos = mul(float4(input.position, 1.0f), WorldViewProj).xyww;
 
-    output.texCoord = inPos;
+    output.texCoord = input.position;
 
     return output;
 }

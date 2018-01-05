@@ -130,7 +130,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	vp.TopLeftY = 0;
 
 	//Create and fill other DirectX Stuffs like Vertex/Index buffer, shaders
-	LPCWSTR shaderPath = L"Shaders/MonShader.fx";
+	LPCWSTR shaderPath = L"Shaders/Shader.fx";
 	ID3DBlob* pVSBlob = NULL;
 	ID3DBlob* pPSBlob = NULL;
 	CompileShader(shaderPath, false, "DiffuseVS", &pVSBlob);
@@ -301,7 +301,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	//SKYBOX STUFF
 	CreateSphere(10, 10);
 
-	LPCWSTR skyShaderPath = L"Shaders/SkyShader.fx";
+	LPCWSTR skyShaderPath = L"Shaders/Shader.fx";
 
 	CompileShader(skyShaderPath, false, "SKYMAP_VS", &SKYMAP_VS_Buffer);
 	CompileShader(skyShaderPath, true, "SKYMAP_PS", &SKYMAP_PS_Buffer);
@@ -311,7 +311,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	
 	ID3D11Resource* pSkyTexture;
 	//ID3D11ShaderResourceView* pTextureView; smrv
-	HRESULT hrSkyDDS = CreateDDSTextureFromFileEx(g_pDevice, L"Resources/skybox.dds", 0,
+	HRESULT hrSkyDDS = CreateDDSTextureFromFileEx(g_pDevice, L"Resources/skymap.dds", 0,
 		D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, D3D11_RESOURCE_MISC_TEXTURECUBE,
 		false, &pSkyTexture, &smrv, NULL);
 
@@ -335,9 +335,10 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 	hr = g_pDevice->CreateShaderResourceView(SMTexture, &SMViewDesc, &smrv);*/
 	
-	D3D11_RASTERIZER_DESC cmdesc;
-	cmdesc.CullMode = D3D11_CULL_NONE;
-	hr = g_pDevice->CreateRasterizerState(&cmdesc, &RSCullNone);
+	//D3D11_RASTERIZER_DESC cmdesc;
+	//cmdesc.CullMode = D3D11_CULL_NONE;
+	//hr = g_pDevice->CreateRasterizerState(&cmdesc, &RSCullNone);
+	hr = g_pDevice->CreateRasterizerState(&oDesc, &RSCullNone);
 
 	D3D11_DEPTH_STENCIL_DESC dssDesc;
 	ZeroMemory(&dssDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
@@ -384,8 +385,23 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			FLOAT rgba[] = { 0.2f, 0.2f, 0.2f, 0.0f };
 			g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, rgba);
 			g_pImmediateContext->ClearDepthStencilView(g_pDepthStencilView, D3D11_CLEAR_DEPTH, 1.0, 0);
+			
+			//SKYBOX
+			//Reset sphereWorld
+			//sphereWorld = XMMatrixIdentity();
+
+			//Define sphereWorld's world space matrix
+			Matrix Scale = Matrix::CreateScale(5.0f, 5.0f, 5.0f);
+			//Make sure the sphere is always centered around camera
+			Vector3 camPosition = oFreeCamera.GetPosition();
+			Matrix Translation = Matrix::CreateTranslation(camPosition);
+
+			//Set sphereWorld's world space using the transformations
+			sphereWorld = Scale * Translation;
+			//END SKYBOX
+
 			// DRAW
-			static float index = 0.0f; index += 0.001f;    // an ever-increasing float value
+			//static float index = 0.0f; index += 0.001f;    // an ever-increasing float value
 			Matrix worldViewProj;
 			//worldViewProj = worldViewProj.CreateRotationX(index);	
 			MonCB VsData;
@@ -396,6 +412,26 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 			//g_pImmediateContext->Draw(3, 0);
 			g_pImmediateContext->DrawIndexed((6 * (TailleX - 1) * (TailleY - 1)), 0, 0);
+
+			//DRAW SKYBOX
+			g_pImmediateContext->IASetIndexBuffer(sphereIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+			g_pImmediateContext->IASetVertexBuffers(0, 1, &sphereVertBuffer, &stride, &offset);
+
+			VsData.WorldViewProj = (sphereWorld * oViewMatrix * oProjMatrix).Transpose();
+			g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, NULL, &VsData.WorldViewProj, 0, 0);
+			g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
+			g_pImmediateContext->PSSetShaderResources(0, 1, &smrv);
+			g_pImmediateContext->PSSetSamplers(0, 1, &myLinearWrapSampler);
+
+			g_pImmediateContext->VSSetShader(SKYMAP_VS, 0, 0);
+			g_pImmediateContext->PSSetShader(SKYMAP_PS, 0, 0);
+			g_pImmediateContext->OMSetDepthStencilState(DSLessEqual, 0);
+			g_pImmediateContext->RSSetState(RSCullNone);
+			g_pImmediateContext->DrawIndexed(NumSphereFaces * 3, 0, 0);
+			
+			g_pImmediateContext->VSSetShader(pVertexShader, 0, 0);
+			g_pImmediateContext->OMSetDepthStencilState(NULL, 0);
+			//END DRAW SKYBOX
 
 			ImGui::Render();
 			g_pSwapChain->Present(0, 0);
