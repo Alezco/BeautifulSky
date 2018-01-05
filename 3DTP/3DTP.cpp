@@ -112,7 +112,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		MessageBox(NULL, L"Erreur lors de la création des render targets de copy", L"Error", 0);
 		return false;
 	}
-	CreateSphere(10, 10);
 
 	ID3D11RasterizerState* pRasterizerState;
 	D3D11_RASTERIZER_DESC oDesc;
@@ -298,6 +297,57 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	g_pDevice->CreateBuffer(&cbDesc, NULL, &g_pConstantBuffer);
 	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
 	//END CONSTANT BUFFER
+
+	//SKYBOX STUFF
+	CreateSphere(10, 10);
+
+	LPCWSTR skyShaderPath = L"Shaders/SkyShader.fx";
+
+	CompileShader(skyShaderPath, false, "SKYMAP_VS", &SKYMAP_VS_Buffer);
+	CompileShader(skyShaderPath, true, "SKYMAP_PS", &SKYMAP_PS_Buffer);
+
+	HRESULT hrSkyVS = g_pDevice->CreateVertexShader(SKYMAP_VS_Buffer->GetBufferPointer(), SKYMAP_VS_Buffer->GetBufferSize(), NULL, &SKYMAP_VS);
+	HRESULT hrSkyPS = g_pDevice->CreatePixelShader(SKYMAP_PS_Buffer->GetBufferPointer(), SKYMAP_PS_Buffer->GetBufferSize(), NULL, &SKYMAP_PS);
+	
+	ID3D11Resource* pSkyTexture;
+	//ID3D11ShaderResourceView* pTextureView; smrv
+	HRESULT hrSkyDDS = CreateDDSTextureFromFileEx(g_pDevice, L"Resources/skybox.dds", 0,
+		D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, D3D11_RESOURCE_MISC_TEXTURECUBE,
+		false, &pSkyTexture, &smrv, NULL);
+
+	g_pImmediateContext->PSSetShaderResources(2, 1, &smrv);
+	
+	/*D3DX11_IMAGE_LOAD_INFO loadSMInfo;
+	loadSMInfo.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+
+	ID3D11Texture2D* SMTexture = 0;
+	hr = D3DX11CreateTextureFromFile(g_pDevice, L"Resources/skybox.dds",
+		&loadSMInfo, 0, (ID3D11Resource**)&SMTexture, 0);
+
+	D3D11_TEXTURE2D_DESC SMTextureDesc;
+	SMTexture->GetDesc(&SMTextureDesc);
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC SMViewDesc;
+	SMViewDesc.Format = SMTextureDesc.Format;
+	SMViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+	SMViewDesc.TextureCube.MipLevels = SMTextureDesc.MipLevels;
+	SMViewDesc.TextureCube.MostDetailedMip = 0;
+
+	hr = g_pDevice->CreateShaderResourceView(SMTexture, &SMViewDesc, &smrv);*/
+	
+	D3D11_RASTERIZER_DESC cmdesc;
+	cmdesc.CullMode = D3D11_CULL_NONE;
+	hr = g_pDevice->CreateRasterizerState(&cmdesc, &RSCullNone);
+
+	D3D11_DEPTH_STENCIL_DESC dssDesc;
+	ZeroMemory(&dssDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
+	dssDesc.DepthEnable = true;
+	dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	dssDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+
+	g_pDevice->CreateDepthStencilState(&dssDesc, &DSLessEqual);
+	
+	//END SKYBOX
 
 	IAEngine::FreeCamera oFreeCamera;
 	iLastTime = timeGetTime();
@@ -543,7 +593,7 @@ void CreateSphere(int LatLines, int LongLines)
 		for (DWORD j = 0; j < LongLines; ++j)
 		{
 			sphereYaw = j * (6.28 / (LongLines));
-			Rotationy = Matrix::CreateRotationY(sphereYaw);
+			Rotationy = Matrix::CreateRotationZ(sphereYaw);
 			currVertPos = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), (Rotationx * Rotationy));
 			currVertPos = XMVector3Normalize(currVertPos);
 			vertices[i*LongLines + j + 1].x = XMVectorGetX(currVertPos);
