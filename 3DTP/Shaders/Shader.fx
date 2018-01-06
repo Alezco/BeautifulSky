@@ -35,7 +35,7 @@ VertexOutput DiffuseVS(VertexInput input)
   return output;
 }
 
-float4 DiffusePS(VertexOutput input) :SV_Target
+float4 DiffusePS(VertexOutput input) : SV_Target
 {
   float4 diffuseColor = DiffuseMap.Sample(LinearTextureSampler, input.uv);
   float4 detailColor = DetailMap.Sample(LinearTextureSampler, input.uv * 4);
@@ -45,12 +45,12 @@ float4 DiffusePS(VertexOutput input) :SV_Target
   return color;
 }
 
-TextureCube SkyMap;
+TextureCube SkyMap : register(t2);
 
 struct SKYMAP_VS_OUTPUT    //output structure for skymap vertex shader
 {
     float4 Pos : SV_POSITION;
-    float3 texCoord : TEXCOORD0;
+    float3 texCoord : TEXCOORD;
 };
 
 SKYMAP_VS_OUTPUT SKYMAP_VS(VertexInput input)

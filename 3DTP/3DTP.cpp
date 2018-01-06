@@ -74,7 +74,6 @@ struct VertexInput {
 
 struct MonCB
 {
-	//float WorldViewProj[4][4]
 	Matrix WorldViewProj;
 };
 
@@ -190,17 +189,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	//END TEXTURE
 
 	//VERTEX BUFFER
-	/*VertexInput vertexs[] = {
-		{ 0.0f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f },
-		{ 0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f },
-		{ -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f }
-	};*/
-
-	/*VertexInput vertexs[] = {
-		{ 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f },
-		{ 5.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f },
-		{ 5.0f, 1.0f, 5.0f, 0.0f, 0.0f, 1.0f }
-	};*/
 	LoadRAW("Resources/terrainheight.raw");
 
 	const unsigned short TailleX = m_sizeX, TailleY = m_sizeY;
@@ -209,13 +197,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	{
 		for (int j = 0; j < TailleY; j++) {
 			float height = m_height[i * TailleY + j];
-
-			/*if (height > 100)
-				vertexs[i * TailleY + j] = { (float)i, (float)j, height, 1.0f, 0.0f, 0.0f };
-			else if (height > 50)
-				vertexs[i * TailleY + j] = { (float)i, (float)j, height, 0.0f, 1.0f, 0.0f };
-			else
-				vertexs[i * TailleY + j] = { (float)i, (float)j, height, 0.0f, 0.0f, 1.0f };*/
 
 			vertexs[i * TailleY + j] = { (float)i, (float)j, height, ((float) i / TailleX), (1.0f - (float) j / TailleY) };
 		}
@@ -317,24 +298,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 	g_pImmediateContext->PSSetShaderResources(2, 1, &smrv);
 	
-	/*D3DX11_IMAGE_LOAD_INFO loadSMInfo;
-	loadSMInfo.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
-
-	ID3D11Texture2D* SMTexture = 0;
-	hr = D3DX11CreateTextureFromFile(g_pDevice, L"Resources/skybox.dds",
-		&loadSMInfo, 0, (ID3D11Resource**)&SMTexture, 0);
-
-	D3D11_TEXTURE2D_DESC SMTextureDesc;
-	SMTexture->GetDesc(&SMTextureDesc);
-
-	D3D11_SHADER_RESOURCE_VIEW_DESC SMViewDesc;
-	SMViewDesc.Format = SMTextureDesc.Format;
-	SMViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
-	SMViewDesc.TextureCube.MipLevels = SMTextureDesc.MipLevels;
-	SMViewDesc.TextureCube.MostDetailedMip = 0;
-
-	hr = g_pDevice->CreateShaderResourceView(SMTexture, &SMViewDesc, &smrv);*/
-	
 	//D3D11_RASTERIZER_DESC cmdesc;
 	//cmdesc.CullMode = D3D11_CULL_NONE;
 	//hr = g_pDevice->CreateRasterizerState(&cmdesc, &RSCullNone);
@@ -389,6 +352,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			//SKYBOX
 			//Reset sphereWorld
 			//sphereWorld = XMMatrixIdentity();
+			Matrix sphereWorld;
 
 			//Define sphereWorld's world space matrix
 			Matrix Scale = Matrix::CreateScale(5.0f, 5.0f, 5.0f);
@@ -401,17 +365,22 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			//END SKYBOX
 
 			// DRAW
-			//static float index = 0.0f; index += 0.001f;    // an ever-increasing float value
 			Matrix worldViewProj;
-			//worldViewProj = worldViewProj.CreateRotationX(index);	
 			MonCB VsData;
 			VsData.WorldViewProj = (worldViewProj * oViewMatrix * oProjMatrix).Transpose(); // Transpose car matrice gérée différemment entre shader et c++
 
-			g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, NULL, &VsData.WorldViewProj, 0, 0);
-			//g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
+			// TMP DRAW TERRAIN
+			g_pImmediateContext->IASetVertexBuffers(0, 1, &pVB, &stride, &offset);
+			g_pImmediateContext->IASetIndexBuffer(pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
-			//g_pImmediateContext->Draw(3, 0);
+			g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, NULL, &VsData.WorldViewProj, 0, 0);
+			g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
+
+			g_pImmediateContext->VSSetShader(pVertexShader, NULL, 0);
+			g_pImmediateContext->PSSetShader(pPixelShader, NULL, 0);
+
 			g_pImmediateContext->DrawIndexed((6 * (TailleX - 1) * (TailleY - 1)), 0, 0);
+			//
 
 			//DRAW SKYBOX
 			g_pImmediateContext->IASetIndexBuffer(sphereIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
@@ -420,7 +389,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			VsData.WorldViewProj = (sphereWorld * oViewMatrix * oProjMatrix).Transpose();
 			g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, NULL, &VsData.WorldViewProj, 0, 0);
 			g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
-			g_pImmediateContext->PSSetShaderResources(0, 1, &smrv);
+			g_pImmediateContext->PSSetShaderResources(2, 1, &smrv);
 			g_pImmediateContext->PSSetSamplers(0, 1, &myLinearWrapSampler);
 
 			g_pImmediateContext->VSSetShader(SKYMAP_VS, 0, 0);
@@ -429,7 +398,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			g_pImmediateContext->RSSetState(RSCullNone);
 			g_pImmediateContext->DrawIndexed(NumSphereFaces * 3, 0, 0);
 			
-			g_pImmediateContext->VSSetShader(pVertexShader, 0, 0);
+			//g_pImmediateContext->VSSetShader(pVertexShader, 0, 0);
 			g_pImmediateContext->OMSetDepthStencilState(NULL, 0);
 			//END DRAW SKYBOX
 
