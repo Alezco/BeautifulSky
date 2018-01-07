@@ -27,19 +27,22 @@ ID3D11DepthStencilView*		g_pDepthStencilView = NULL;
 ID3D11Buffer*				g_pConstantBuffer = NULL; // CB (added after given code)
 
 ID3D11Texture2D*			g_pRender = NULL;
+ID3D11SamplerState*         g_pLinearWrapSampler = NULL;
 
-ID3D11Buffer*				sphereIndexBuffer;
-ID3D11Buffer*				sphereVertBuffer;
+ID3D11Buffer*				g_pVertexBuffer = NULL;
+ID3D11Buffer*				g_pIndexBuffer = NULL;
+ID3D11InputLayout*			g_pVertexLayout = NULL;
+ID3D11VertexShader*			g_pVertexShader = NULL;
+ID3D11PixelShader*			g_pPixelShader = NULL;
 
-ID3D11VertexShader*			SKYMAP_VS;
-ID3D11PixelShader*			SKYMAP_PS;
-ID3D10Blob*					SKYMAP_VS_Buffer;
-ID3D10Blob*					SKYMAP_PS_Buffer;
-
-ID3D11ShaderResourceView*	smrv;
-
-ID3D11DepthStencilState*	DSLessEqual;
-ID3D11RasterizerState*		RSCullNone;
+ID3D11Buffer*				g_pSphereIndexBuffer = NULL;
+ID3D11Buffer*				g_pSphereVertBuffer = NULL;
+ID3D11VertexShader*			g_pSkyboxVS = NULL;
+ID3D11PixelShader*			g_pSkyboxPS = NULL;
+ID3D10Blob*					g_pSkyboxVSBuffer = NULL;
+ID3D10Blob*					g_pSkyboxPSBuffer = NULL;
+ID3D11ShaderResourceView*	g_pSkyboxSRV = NULL;
+ID3D11DepthStencilState*	DSLessEqual = NULL;
 
 int NumSphereVertices;
 int NumSphereFaces;
@@ -50,15 +53,6 @@ unsigned short m_sizeX;
 unsigned short m_sizeY;
 float *m_height;
 float m_maxZ = 50.0;
-
-// Forward declarations
-bool	CreateWindows(HINSTANCE, int, HWND& hWnd);
-bool	CreateDevice();
-bool	CreateDefaultRT();
-bool	CreateCopyRT();
-bool	CompileShader(LPCWSTR pFileName, bool bPixel, LPCSTR pEntrypoint, ID3DBlob** ppCompiledShader);
-bool	LoadRAW(const std::string& map);
-void	CreateSphere(int LatLines, int LongLines);
 
 using namespace DirectX::SimpleMath;
 using namespace DirectX;
@@ -76,6 +70,23 @@ struct MonCB
 {
 	Matrix WorldViewProj;
 };
+
+// Forward declarations
+bool	CreateWindows(HINSTANCE, int, HWND& hWnd);
+bool	CreateDevice();
+bool	CreateDefaultRT();
+bool	CreateCopyRT();
+bool	CompileShader(LPCWSTR pFileName, bool bPixel, LPCSTR pEntrypoint, ID3DBlob** ppCompiledShader);
+
+bool	LoadRAW(const std::string& map);
+void    InitTerrainShaders();
+void	InitTerrainTexture();
+void	InitTerrainBuffers();
+void	DrawTerrain(MonCB* VsData, Matrix WVP);
+
+void	CreateSphere(int LatLines, int LongLines);
+void	InitSkybox();
+void	DrawSkybox(MonCB* VsData, Matrix WVP);
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
@@ -128,190 +139,12 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	vp.TopLeftX = 0;
 	vp.TopLeftY = 0;
 
-	//Create and fill other DirectX Stuffs like Vertex/Index buffer, shaders
-	LPCWSTR shaderPath = L"Shaders/Shader.fx";
-	ID3DBlob* pVSBlob = NULL;
-	ID3DBlob* pPSBlob = NULL;
-	CompileShader(shaderPath, false, "DiffuseVS", &pVSBlob);
-	CompileShader(shaderPath, true, "DiffusePS", &pPSBlob);
+	InitTerrainShaders();
+	InitTerrainTexture();
+	InitTerrainBuffers();
 
-	ID3D11VertexShader* pVertexShader;
-	ID3D11PixelShader* pPixelShader;
-	HRESULT hrCVS = g_pDevice->CreateVertexShader(pVSBlob->GetBufferPointer(),
-		pVSBlob->GetBufferSize(), NULL, &pVertexShader);
-	HRESULT hrCPS = g_pDevice->CreatePixelShader(pPSBlob->GetBufferPointer(),
-		pPSBlob->GetBufferSize(), NULL, &pPixelShader);
-
-	D3D11_INPUT_ELEMENT_DESC layoutPosColor[] =
-	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-	};
-
-	ID3D11InputLayout* pVertexLayout;
-	HRESULT hrCIL = g_pDevice->CreateInputLayout(
-		layoutPosColor, 2,
-		pVSBlob->GetBufferPointer(),
-		pVSBlob->GetBufferSize(), &pVertexLayout);
-
-	g_pImmediateContext->IASetInputLayout(pVertexLayout);
-	g_pImmediateContext->VSSetShader(pVertexShader, NULL, 0);
-	g_pImmediateContext->PSSetShader(pPixelShader, NULL, 0);
-	//END SHADERS
-
-	//BEGIN TEXTURE
-	ID3D11Resource* pTexture;
-	ID3D11ShaderResourceView* pTextureView;
-	HRESULT hrDDS = CreateDDSTextureFromFile(g_pDevice, L"Resources/terraintexture.dds", &pTexture, &pTextureView, 0, NULL);
-
-	D3D11_SAMPLER_DESC samplerDesc;
-	samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
-	samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-	samplerDesc.MipLODBias = 0.0f;
-	samplerDesc.MaxAnisotropy = 1;
-	samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-	samplerDesc.MinLOD = -FLT_MAX;
-	samplerDesc.MaxLOD = FLT_MAX;
-	
-	ID3D11SamplerState* myLinearWrapSampler;
-	HRESULT hrSS = g_pDevice->CreateSamplerState(&samplerDesc, &myLinearWrapSampler);
-	g_pImmediateContext->PSSetSamplers(0, 1, &myLinearWrapSampler);
-
-	ID3D11Resource* pTextureDetail;
-	ID3D11ShaderResourceView* pTextureViewDetail;
-	HRESULT hrDDS2 = CreateDDSTextureFromFile(g_pDevice, L"Resources/detail.dds", &pTextureDetail, &pTextureViewDetail, 0, NULL);
-	
-	ID3D11ShaderResourceView* pTextureViews[] = { pTextureView , pTextureViewDetail };
-
-	g_pImmediateContext->PSSetShaderResources(0, 2, pTextureViews);
-	//END TEXTURE
-
-	//VERTEX BUFFER
-	LoadRAW("Resources/terrainheight.raw");
-
-	const unsigned short TailleX = m_sizeX, TailleY = m_sizeY;
-	VertexInput *vertexs = new VertexInput[TailleX * TailleY];
-	for (int i = 0; i < TailleX; i++)
-	{
-		for (int j = 0; j < TailleY; j++) {
-			float height = m_height[i * TailleY + j];
-
-			vertexs[i * TailleY + j] = { (float)i, (float)j, height, ((float) i / TailleX), (1.0f - (float) j / TailleY) };
-		}
-	}
-
-	ID3D11Buffer* pVB = NULL;
-	D3D11_BUFFER_DESC vbDesc;
-	vbDesc.Usage = D3D11_USAGE_IMMUTABLE;
-	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-	vbDesc.ByteWidth = sizeof(VertexInput) * TailleX * TailleY;
-	vbDesc.MiscFlags = 0;
-	vbDesc.StructureByteStride = 0;
-	vbDesc.CPUAccessFlags = 0;
-
-	D3D11_SUBRESOURCE_DATA resData;
-	resData.pSysMem = vertexs;
-	resData.SysMemPitch = 0;
-	resData.SysMemSlicePitch = 0;
-	g_pDevice->CreateBuffer(&vbDesc, &resData, &pVB);
-
-	// select which vertex buffer to display
-	UINT stride = sizeof(VertexInput);
-	UINT offset = 0;
-	g_pImmediateContext->IASetVertexBuffers(0, 1, &pVB, &stride, &offset);
-	g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	//END VERTEX BUFFER
-
-	//INDEX BUFFER
-	ID3D11Buffer *pIndexBuffer = NULL;
-
-	unsigned int *indices = new unsigned int[6 * (TailleX - 1) * (TailleY - 1)];
-	int index = 0;
-	for (int i = 0; i < (TailleX - 1); i++)
-	{
-		for (int j = 0; j < (TailleY - 1); j++) {		
-			indices[index] = i * TailleY + j;
-			indices[index + 1] = (i * TailleY + j) + 1;
-			indices[index + 2] = ((i + 1) * TailleY + j);
-
-			indices[index + 3] = ((i + 1) * TailleY + j) + 1;
-			indices[index + 4] = ((i + 1) * TailleY + j);
-			indices[index + 5] = (i * TailleY + j) + 1;
-
-			index += 6;
-		}
-	}
-
-	// Define the resource data.
-	D3D11_SUBRESOURCE_DATA InitData;
-	InitData.pSysMem = indices;
-	InitData.SysMemPitch = 0;
-	InitData.SysMemSlicePitch = 0;
-
-	// Fill in a buffer description.
-	D3D11_BUFFER_DESC ibDesc;
-	ibDesc.Usage = D3D11_USAGE_IMMUTABLE;
-	ibDesc.ByteWidth = sizeof(unsigned int) * (6 * (TailleX - 1) * (TailleY - 1));
-	ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	ibDesc.CPUAccessFlags = 0;
-	ibDesc.MiscFlags = 0;
-	ibDesc.StructureByteStride = 0;
-
-	// Create the buffer with the device.
-	HRESULT hr = g_pDevice->CreateBuffer(&ibDesc, &InitData, &pIndexBuffer);
-	if (FAILED(hr))
-		return hr;
-
-	// Set the buffer.
-	g_pImmediateContext->IASetIndexBuffer(pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
-	//END INDEX  BUFFER
-
-	//CONSTANT BUFFER
-	D3D11_BUFFER_DESC cbDesc;
-	ZeroMemory(&cbDesc, sizeof(cbDesc));
-	cbDesc.ByteWidth = sizeof(MonCB);
-	cbDesc.Usage = D3D11_USAGE_DEFAULT;
-	cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-
-	g_pDevice->CreateBuffer(&cbDesc, NULL, &g_pConstantBuffer);
-	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
-	//END CONSTANT BUFFER
-
-	//SKYBOX STUFF
 	CreateSphere(10, 10);
-
-	LPCWSTR skyShaderPath = L"Shaders/Shader.fx";
-
-	CompileShader(skyShaderPath, false, "SKYMAP_VS", &SKYMAP_VS_Buffer);
-	CompileShader(skyShaderPath, true, "SKYMAP_PS", &SKYMAP_PS_Buffer);
-
-	HRESULT hrSkyVS = g_pDevice->CreateVertexShader(SKYMAP_VS_Buffer->GetBufferPointer(), SKYMAP_VS_Buffer->GetBufferSize(), NULL, &SKYMAP_VS);
-	HRESULT hrSkyPS = g_pDevice->CreatePixelShader(SKYMAP_PS_Buffer->GetBufferPointer(), SKYMAP_PS_Buffer->GetBufferSize(), NULL, &SKYMAP_PS);
-	
-	ID3D11Resource* pSkyTexture;
-	//ID3D11ShaderResourceView* pTextureView; smrv
-	HRESULT hrSkyDDS = CreateDDSTextureFromFileEx(g_pDevice, L"Resources/skymap.dds", 0,
-		D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, D3D11_RESOURCE_MISC_TEXTURECUBE,
-		false, &pSkyTexture, &smrv, NULL);
-
-	g_pImmediateContext->PSSetShaderResources(2, 1, &smrv);
-	
-	//D3D11_RASTERIZER_DESC cmdesc;
-	//cmdesc.CullMode = D3D11_CULL_NONE;
-	//hr = g_pDevice->CreateRasterizerState(&cmdesc, &RSCullNone);
-	hr = g_pDevice->CreateRasterizerState(&oDesc, &RSCullNone);
-
-	D3D11_DEPTH_STENCIL_DESC dssDesc;
-	ZeroMemory(&dssDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
-	dssDesc.DepthEnable = true;
-	dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-	dssDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-
-	g_pDevice->CreateDepthStencilState(&dssDesc, &DSLessEqual);
-	
-	//END SKYBOX
+	InitSkybox();
 
 	IAEngine::FreeCamera oFreeCamera;
 	iLastTime = timeGetTime();
@@ -349,8 +182,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, rgba);
 			g_pImmediateContext->ClearDepthStencilView(g_pDepthStencilView, D3D11_CLEAR_DEPTH, 1.0, 0);
 			
-			//SKYBOX
-			//Reset sphereWorld
+			//SKYBOX World matrix
 			Matrix sphereWorld;
 
 			//Define sphereWorld's world space matrix
@@ -363,47 +195,16 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 			//Set sphereWorld's world space using the transformations
 			sphereWorld = Scale * Rotation * Translation;
-			//END SKYBOX
 
 			// DRAW
-			Matrix worldViewProj;
-			//worldViewProj = worldViewProj.CreateRotationX(300);
-
 			MonCB VsData;
-			VsData.WorldViewProj = (worldViewProj * oViewMatrix * oProjMatrix).Transpose(); // Transpose car matrice gérée différemment entre shader et c++
 
-			// TMP DRAW TERRAIN
-			g_pImmediateContext->IASetVertexBuffers(0, 1, &pVB, &stride, &offset);
-			g_pImmediateContext->IASetIndexBuffer(pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+			Matrix worldViewProj;
+			Matrix WVP = (worldViewProj * oViewMatrix * oProjMatrix).Transpose();
+			DrawTerrain(&VsData, WVP);
 
-			g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, NULL, &VsData.WorldViewProj, 0, 0);
-			g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
-
-			g_pImmediateContext->VSSetShader(pVertexShader, NULL, 0);
-			g_pImmediateContext->PSSetShader(pPixelShader, NULL, 0);
-
-			g_pImmediateContext->DrawIndexed((6 * (TailleX - 1) * (TailleY - 1)), 0, 0);
-			//
-
-			//DRAW SKYBOX
-			g_pImmediateContext->IASetIndexBuffer(sphereIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
-			g_pImmediateContext->IASetVertexBuffers(0, 1, &sphereVertBuffer, &stride, &offset);
-
-			VsData.WorldViewProj = (sphereWorld * oViewMatrix * oProjMatrix).Transpose();
-			g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, NULL, &VsData.WorldViewProj, 0, 0);
-			g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
-			g_pImmediateContext->PSSetShaderResources(2, 1, &smrv);
-			g_pImmediateContext->PSSetSamplers(0, 1, &myLinearWrapSampler);
-
-			g_pImmediateContext->VSSetShader(SKYMAP_VS, 0, 0);
-			g_pImmediateContext->PSSetShader(SKYMAP_PS, 0, 0);
-			g_pImmediateContext->OMSetDepthStencilState(DSLessEqual, 0);
-			g_pImmediateContext->RSSetState(RSCullNone);
-			g_pImmediateContext->DrawIndexed(NumSphereFaces * 3, 0, 0);
-			
-			//g_pImmediateContext->VSSetShader(pVertexShader, 0, 0);
-			g_pImmediateContext->OMSetDepthStencilState(NULL, 0);
-			//END DRAW SKYBOX
+			WVP = (sphereWorld * oViewMatrix * oProjMatrix).Transpose();
+			DrawSkybox(&VsData, WVP);
 
 			ImGui::Render();
 			g_pSwapChain->Present(0, 0);
@@ -419,26 +220,23 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	g_pSwapChain->Release();
 	g_pDevice->Release();
 	
-	//My releases
+	//Terrain
 	g_pConstantBuffer->Release();
-	pVB->Release();
-	pIndexBuffer->Release();
-	pPixelShader->Release();
-	pVertexShader->Release();
-	pVertexLayout->Release();
-	delete[] indices;
-	delete[] vertexs;
+	g_pVertexBuffer->Release();
+	g_pIndexBuffer->Release();
+	g_pPixelShader->Release();
+	g_pVertexShader->Release();
+	g_pVertexLayout->Release();
 
 	//Skybox
-	sphereIndexBuffer->Release();
-	sphereVertBuffer->Release();
-	SKYMAP_VS->Release();
-	SKYMAP_PS->Release();
-	SKYMAP_VS_Buffer->Release();
-	SKYMAP_PS_Buffer->Release();
-	smrv->Release();
+	g_pSphereIndexBuffer->Release();
+	g_pSphereVertBuffer->Release();
+	g_pSkyboxVS->Release();
+	g_pSkyboxPS->Release();
+	g_pSkyboxVSBuffer->Release();
+	g_pSkyboxPSBuffer->Release();
+	g_pSkyboxSRV->Release();
 	DSLessEqual->Release();
-	RSCullNone->Release();
 
 	delete g_pInputManager;
 	return (int) oMsg.wParam;
@@ -578,6 +376,172 @@ bool LoadRAW(const std::string& map)
 	return true;
 }
 
+void InitTerrainShaders()
+{
+	LPCWSTR shaderPath = L"Shaders/Shader.fx";
+	ID3DBlob* pVSBlob = NULL;
+	ID3DBlob* pPSBlob = NULL;
+	CompileShader(shaderPath, false, "DiffuseVS", &pVSBlob);
+	CompileShader(shaderPath, true, "DiffusePS", &pPSBlob);
+
+	HRESULT hrCVS = g_pDevice->CreateVertexShader(pVSBlob->GetBufferPointer(),
+		pVSBlob->GetBufferSize(), NULL, &g_pVertexShader);
+	HRESULT hrCPS = g_pDevice->CreatePixelShader(pPSBlob->GetBufferPointer(),
+		pPSBlob->GetBufferSize(), NULL, &g_pPixelShader);
+
+	D3D11_INPUT_ELEMENT_DESC layoutPosColor[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	};
+
+	HRESULT hrCIL = g_pDevice->CreateInputLayout(
+		layoutPosColor, 2,
+		pVSBlob->GetBufferPointer(),
+		pVSBlob->GetBufferSize(), &g_pVertexLayout);
+
+	g_pImmediateContext->IASetInputLayout(g_pVertexLayout);
+	g_pImmediateContext->VSSetShader(g_pVertexShader, NULL, 0);
+	g_pImmediateContext->PSSetShader(g_pPixelShader, NULL, 0);
+}
+
+void InitTerrainTexture()
+{
+	ID3D11Resource* pTexture;
+	ID3D11ShaderResourceView* pTextureView;
+	HRESULT hrDDS = CreateDDSTextureFromFile(g_pDevice, L"Resources/terraintexture.dds", &pTexture, &pTextureView, 0, NULL);
+
+	D3D11_SAMPLER_DESC samplerDesc;
+	samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+	samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+	samplerDesc.MipLODBias = 0.0f;
+	samplerDesc.MaxAnisotropy = 1;
+	samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+	samplerDesc.MinLOD = -FLT_MAX;
+	samplerDesc.MaxLOD = FLT_MAX;
+	
+	HRESULT hrSS = g_pDevice->CreateSamplerState(&samplerDesc, &g_pLinearWrapSampler);
+	g_pImmediateContext->PSSetSamplers(0, 1, &g_pLinearWrapSampler);
+
+	ID3D11Resource* pTextureDetail;
+	ID3D11ShaderResourceView* pTextureViewDetail;
+	HRESULT hrDDS2 = CreateDDSTextureFromFile(g_pDevice, L"Resources/detail.dds", &pTextureDetail, &pTextureViewDetail, 0, NULL);
+
+	ID3D11ShaderResourceView* pTextureViews[] = { pTextureView , pTextureViewDetail };
+
+	g_pImmediateContext->PSSetShaderResources(0, 2, pTextureViews);
+}
+
+void InitTerrainBuffers()
+{
+	//VERTEX BUFFER
+	LoadRAW("Resources/terrainheight.raw");
+
+	const unsigned short TailleX = m_sizeX, TailleY = m_sizeY;
+	VertexInput *vertexs = new VertexInput[TailleX * TailleY];
+	for (int i = 0; i < TailleX; i++)
+	{
+		for (int j = 0; j < TailleY; j++) {
+			float height = m_height[i * TailleY + j];
+
+			vertexs[i * TailleY + j] = { (float)i, (float)j, height, ((float)i / TailleX), (1.0f - (float)j / TailleY) };
+		}
+	}
+
+	D3D11_BUFFER_DESC vbDesc;
+	vbDesc.Usage = D3D11_USAGE_IMMUTABLE;
+	vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	vbDesc.ByteWidth = sizeof(VertexInput) * TailleX * TailleY;
+	vbDesc.MiscFlags = 0;
+	vbDesc.StructureByteStride = 0;
+	vbDesc.CPUAccessFlags = 0;
+
+	D3D11_SUBRESOURCE_DATA resData;
+	resData.pSysMem = vertexs;
+	resData.SysMemPitch = 0;
+	resData.SysMemSlicePitch = 0;
+	g_pDevice->CreateBuffer(&vbDesc, &resData, &g_pVertexBuffer);
+
+	// select which vertex buffer to display
+	UINT stride = sizeof(VertexInput);
+	UINT offset = 0;
+	g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &stride, &offset);
+	g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	//END VERTEX BUFFER
+
+	//INDEX BUFFER
+	unsigned int *indices = new unsigned int[6 * (TailleX - 1) * (TailleY - 1)];
+	int index = 0;
+	for (int i = 0; i < (TailleX - 1); i++)
+	{
+		for (int j = 0; j < (TailleY - 1); j++) {
+			indices[index] = i * TailleY + j;
+			indices[index + 1] = (i * TailleY + j) + 1;
+			indices[index + 2] = ((i + 1) * TailleY + j);
+
+			indices[index + 3] = ((i + 1) * TailleY + j) + 1;
+			indices[index + 4] = ((i + 1) * TailleY + j);
+			indices[index + 5] = (i * TailleY + j) + 1;
+
+			index += 6;
+		}
+	}
+
+	// Define the resource data.
+	D3D11_SUBRESOURCE_DATA InitData;
+	InitData.pSysMem = indices;
+	InitData.SysMemPitch = 0;
+	InitData.SysMemSlicePitch = 0;
+
+	// Fill in a buffer description.
+	D3D11_BUFFER_DESC ibDesc;
+	ibDesc.Usage = D3D11_USAGE_IMMUTABLE;
+	ibDesc.ByteWidth = sizeof(unsigned int) * (6 * (TailleX - 1) * (TailleY - 1));
+	ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	ibDesc.CPUAccessFlags = 0;
+	ibDesc.MiscFlags = 0;
+	ibDesc.StructureByteStride = 0;
+
+	// Create the buffer with the device.
+	g_pDevice->CreateBuffer(&ibDesc, &InitData, &g_pIndexBuffer);
+	// Set the buffer.
+	g_pImmediateContext->IASetIndexBuffer(g_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+	//END INDEX  BUFFER
+
+	//CONSTANT BUFFER
+	D3D11_BUFFER_DESC cbDesc;
+	ZeroMemory(&cbDesc, sizeof(cbDesc));
+	cbDesc.ByteWidth = sizeof(MonCB);
+	cbDesc.Usage = D3D11_USAGE_DEFAULT;
+	cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+
+	g_pDevice->CreateBuffer(&cbDesc, NULL, &g_pConstantBuffer);
+	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
+	//END CONSTANT BUFFER
+}
+
+void DrawTerrain(MonCB* VsData, Matrix WVP)
+{
+	VsData->WorldViewProj = WVP;
+
+	UINT stride = sizeof(VertexInput);
+	UINT offset = 0;
+	const unsigned short TailleX = m_sizeX, TailleY = m_sizeY;
+
+	g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &stride, &offset);
+	g_pImmediateContext->IASetIndexBuffer(g_pIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+
+	g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, NULL, &(VsData->WorldViewProj), 0, 0);
+	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
+
+	g_pImmediateContext->VSSetShader(g_pVertexShader, NULL, 0);
+	g_pImmediateContext->PSSetShader(g_pPixelShader, NULL, 0);
+
+	g_pImmediateContext->DrawIndexed((6 * (TailleX - 1) * (TailleY - 1)), 0, 0);
+}
+
 void CreateSphere(int LatLines, int LongLines)
 {
 	NumSphereVertices = ((LatLines - 2) * LongLines) + 2;
@@ -627,7 +591,7 @@ void CreateSphere(int LatLines, int LongLines)
 
 	ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
 	vertexBufferData.pSysMem = &vertices[0];
-	hr = g_pDevice->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &sphereVertBuffer);
+	hr = g_pDevice->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &g_pSphereVertBuffer);
 
 	std::vector<DWORD> indices(NumSphereFaces * 3);
 
@@ -695,5 +659,53 @@ void CreateSphere(int LatLines, int LongLines)
 	D3D11_SUBRESOURCE_DATA iinitData;
 
 	iinitData.pSysMem = &indices[0];
-	g_pDevice->CreateBuffer(&indexBufferDesc, &iinitData, &sphereIndexBuffer);
+	g_pDevice->CreateBuffer(&indexBufferDesc, &iinitData, &g_pSphereIndexBuffer);
+}
+
+void InitSkybox()
+{
+	LPCWSTR skyShaderPath = L"Shaders/Shader.fx";
+
+	CompileShader(skyShaderPath, false, "SKYMAP_VS", &g_pSkyboxVSBuffer);
+	CompileShader(skyShaderPath, true, "SKYMAP_PS", &g_pSkyboxPSBuffer);
+
+	HRESULT hrSkyVS = g_pDevice->CreateVertexShader(g_pSkyboxVSBuffer->GetBufferPointer(), g_pSkyboxVSBuffer->GetBufferSize(), NULL, &g_pSkyboxVS);
+	HRESULT hrSkyPS = g_pDevice->CreatePixelShader(g_pSkyboxPSBuffer->GetBufferPointer(), g_pSkyboxPSBuffer->GetBufferSize(), NULL, &g_pSkyboxPS);
+
+	ID3D11Resource* pSkyTexture;
+	HRESULT hrSkyDDS = CreateDDSTextureFromFileEx(g_pDevice, L"Resources/skymap.dds", 0,
+		D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, D3D11_RESOURCE_MISC_TEXTURECUBE,
+		false, &pSkyTexture, &g_pSkyboxSRV, NULL);
+
+	g_pImmediateContext->PSSetShaderResources(2, 1, &g_pSkyboxSRV);
+
+	D3D11_DEPTH_STENCIL_DESC dssDesc;
+	ZeroMemory(&dssDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
+	dssDesc.DepthEnable = true;
+	dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	dssDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+
+	g_pDevice->CreateDepthStencilState(&dssDesc, &DSLessEqual);
+}
+
+void DrawSkybox(MonCB* VsData, Matrix WVP)
+{
+	VsData->WorldViewProj = WVP;
+
+	UINT stride = sizeof(VertexInput);
+	UINT offset = 0;
+	g_pImmediateContext->IASetIndexBuffer(g_pSphereIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+	g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pSphereVertBuffer, &stride, &offset);
+
+	g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, NULL, &(VsData->WorldViewProj), 0, 0);
+	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
+	g_pImmediateContext->PSSetShaderResources(2, 1, &g_pSkyboxSRV);
+	g_pImmediateContext->PSSetSamplers(0, 1, &g_pLinearWrapSampler);
+
+	g_pImmediateContext->VSSetShader(g_pSkyboxVS, 0, 0);
+	g_pImmediateContext->PSSetShader(g_pSkyboxPS, 0, 0);
+	g_pImmediateContext->OMSetDepthStencilState(DSLessEqual, 0);
+	g_pImmediateContext->DrawIndexed(NumSphereFaces * 3, 0, 0);
+
+	g_pImmediateContext->OMSetDepthStencilState(NULL, 0);
 }
