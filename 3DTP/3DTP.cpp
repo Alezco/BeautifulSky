@@ -165,11 +165,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 			g_pInputManager->Manage();
 
-			ImGui_ImplDX11_NewFrame();
-			ImGui::Begin("Menu Debug");
-			ImGui::Text("Hello World Imgui");
-			ImGui::End();
-
 			oFreeCamera.Update(g_pInputManager, fElaspedTime);
 			const Matrix& oViewMatrix = oFreeCamera.GetViewMatrix();
 			Matrix oProjMatrix = Matrix::CreatePerspectiveFieldOfView(M_PI / 4.0f, (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.01f, 1000.0f);
@@ -190,8 +185,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			Matrix Scale = Matrix::CreateScale(5.0f, 5.0f, 5.0f);
 			//Make sure the sphere is always centered around camera
 			Matrix Translation = Matrix::CreateTranslation(camPosition);
-			//Adjust rotation to terrain
-			Matrix Rotation = Matrix::CreateRotationX(20.1);
+			//Rotation to match terrain
+			Matrix Rotation = Matrix::CreateRotationX(20.4);
 
 			//Set sphereWorld's world space using the transformations
 			sphereWorld = Scale * Rotation * Translation;
@@ -206,12 +201,10 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			WVP = (sphereWorld * oViewMatrix * oProjMatrix).Transpose();
 			DrawSkybox(&VsData, WVP);
 
-			ImGui::Render();
 			g_pSwapChain->Present(0, 0);
 		}
 	}
 	//Release D3D objects
-	ImGui_ImplDX11_Shutdown();
 	g_pRenderTargetView->Release();
 	g_pDepthStencilView->Release();
 	g_pDepthStencil->Release();
