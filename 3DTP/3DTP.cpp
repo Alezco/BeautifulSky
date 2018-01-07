@@ -351,21 +351,24 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			
 			//SKYBOX
 			//Reset sphereWorld
-			//sphereWorld = XMMatrixIdentity();
 			Matrix sphereWorld;
 
 			//Define sphereWorld's world space matrix
+			Vector3 camPosition = oFreeCamera.GetPosition();
 			Matrix Scale = Matrix::CreateScale(5.0f, 5.0f, 5.0f);
 			//Make sure the sphere is always centered around camera
-			Vector3 camPosition = oFreeCamera.GetPosition();
 			Matrix Translation = Matrix::CreateTranslation(camPosition);
+			//Adjust rotation to terrain
+			Matrix Rotation = Matrix::CreateRotationX(20.1);
 
 			//Set sphereWorld's world space using the transformations
-			sphereWorld = Scale * Translation;
+			sphereWorld = Scale * Rotation * Translation;
 			//END SKYBOX
 
 			// DRAW
 			Matrix worldViewProj;
+			//worldViewProj = worldViewProj.CreateRotationX(300);
+
 			MonCB VsData;
 			VsData.WorldViewProj = (worldViewProj * oViewMatrix * oProjMatrix).Transpose(); // Transpose car matrice gérée différemment entre shader et c++
 
